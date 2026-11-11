@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>카니발 주유계산기</title>
+<meta name="description" content="계기판 주행가능거리와 휘발유 가격으로 만땅 주유 금액을 계산합니다.">
+<meta name="theme-color" content="#eef1f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1418" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="주유계산기">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+/* Layout: one main panel (gauge + 2 inputs -> big amount), then a small car-settings strip and an optional "amount fill" panel */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --ink:#18212b; --muted:#5d6b78; --line:#d5dce2;
+  --accent:#d9822b; --accent-soft:#fbeedd; --warn:#c2412d; --field:#f6f8f9;
+  --f-body:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-num:ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1418; --panel:#182027; --ink:#e7ecef; --muted:#93a2ae; --line:#2b3741;
+  --accent:#f0a14f; --accent-soft:#3a2a18; --warn:#ef7a66; --field:#11181d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1418; --panel:#182027; --ink:#e7ecef; --muted:#93a2ae; --line:#2b3741;
+  --accent:#f0a14f; --accent-soft:#3a2a18; --warn:#ef7a66; --field:#11181d; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;color-scheme:light}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding-block:24px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:grid;gap:16px}
+h1{font-size:1.45rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:1.02rem;margin:0}
+.sub{color:var(--muted);margin:2px 0 0;font-size:.9rem}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:grid;gap:16px;min-width:0}
+
+.top{display:grid;grid-template-columns:200px 1fr;gap:24px;align-items:center}
+.gauge{display:grid;justify-items:center;gap:2px}
+.gauge svg{width:100%;max-width:200px;height:auto}
+.gauge .cap{color:var(--muted);font-size:.82rem}
+.inputs{display:grid;gap:14px;min-width:0}
+label{display:grid;gap:4px;font-size:.82rem;color:var(--muted);letter-spacing:.02em}
+input{font:inherit;font-size:1rem;color:var(--ink);background:var(--field);border:1px solid var(--line);
+  border-radius:8px;padding:10px 12px;width:100%;min-width:0}
+input[type=number]{font-family:var(--f-num)}
+input.big{font-size:1.5rem;font-weight:600;padding:10px 12px}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input[type=range]{padding:0;accent-color:var(--accent);background:transparent;border:0}
+.unit{position:relative}
+.unit input{padding-right:58px}
+.unit span{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.85rem;pointer-events:none}
+
+.answer{background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:16px 18px;display:grid;gap:10px}
+.answer .lead{font-size:.85rem;color:var(--muted);margin:0}
+.answer .money{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:clamp(2rem,7vw,2.8rem);font-weight:600;line-height:1.1;color:var(--ink)}
+.answer .money small{font-family:var(--f-body);font-size:1rem;font-weight:500;margin-left:4px}
+.facts{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.9rem}
+.facts b{font-family:var(--f-num);font-weight:600}
+.pump{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;border-top:1px dashed var(--accent);padding-top:10px;font-size:.9rem}
+.pump b{font-family:var(--f-num);font-size:1.2rem}
+
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.quick{display:flex;flex-wrap:wrap;gap:6px}
+.quick button{font:inherit;font-size:.8rem;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:4px 10px;cursor:pointer}
+.quick button:hover{border-color:var(--accent)}
+.out{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0}
+.out div{background:var(--field);padding:10px 12px;display:grid;gap:2px}
+.out dt{font-size:.75rem;color:var(--muted)}
+.out dd{margin:0;font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:1.1rem;font-weight:600}
+.out dd small{font-family:var(--f-body);font-size:.75rem;font-weight:400;color:var(--muted);margin-left:2px}
+.note{font-size:.82rem;margin:0;color:var(--muted)}
+.note.bad{color:var(--warn)}
+footer{color:var(--muted);font-size:.78rem;line-height:1.6}
+@media (max-width:600px){.top{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){#needle{transition:transform .3s ease}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div>
+    <h1>카니발 만땅 주유계산기</h1>
+    <p class="sub">계기판 주행가능거리만 보고, 가득 채우려면 얼마를 넣어야 하는지 계산합니다</p>
+  </div>
+
+  <section class="panel" aria-label="만땅까지 필요한 금액">
+    <div class="top">
+      <div class="gauge">
+        <svg viewBox="0 0 220 130" role="img" aria-label="현재 연료 게이지">
+          <path d="M20 115 A90 90 0 0 1 200 115" fill="none" stroke="var(--line)" stroke-width="14" stroke-linecap="round"/>
+          <path id="arcFill" d="M20 115 A90 90 0 0 1 200 115" fill="none" stroke="var(--accent)" stroke-width="14" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/>
+          <text x="16" y="128" font-size="13" fill="var(--muted)" font-family="var(--f-num)">E</text>
+          <text x="196" y="128" font-size="13" fill="var(--muted)" font-family="var(--f-num)">F</text>
+          <g id="needle" style="transform-origin:110px 115px">
+            <line x1="110" y1="115" x2="110" y2="40" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
+          </g>
+          <circle cx="110" cy="115" r="7" fill="var(--ink)"/>
+        </svg>
+        <div class="cap">남은 연료 약 <span class="num" id="leftL">0</span>L · <span class="num" id="pct">0</span>%</div>
+      </div>
+
+      <div class="inputs">
+        <label>지금 계기판 주행가능거리
+          <div class="unit"><input class="big" type="number" id="cur" step="10" min="0" inputmode="numeric" value="210"><span>km</span></div>
+          <input type="range" id="curRange" min="0" max="860" step="10" value="210" aria-label="주행가능거리 슬라이더">
+        </label>
+        <label>오늘 휘발유 가격
+          <div class="unit"><input type="number" id="price" step="10" min="0" inputmode="numeric" value="1858"><span>원/L</span></div>
+        </label>
+      </div>
+    </div>
+
+    <div class="answer" aria-live="polite">
+      <p class="lead">만땅까지 넣어야 할 금액</p>
+      <div class="money"><span id="cost">0</span><small>원</small></div>
+      <div class="facts">
+        <span>넣을 양 <b id="needL">0</b>L</span>
+        <span>채워지는 거리 <b id="needKm">0</b>km</span>
+      </div>
+      <div class="pump">주유기에 금액으로 입력한다면 <b id="pumpWon">0원</b> <span class="note">(천 원 단위 올림)</span></div>
+    </div>
+    <p class="note" id="warn"></p>
+  </section>
+
+  <section class="panel" aria-labelledby="carT">
+    <h2 id="carT">내 차 기준값</h2>
+    <div class="row">
+      <label>만땅일 때 계기판 주행가능거리
+        <div class="unit"><input type="number" id="full" step="10" min="1" inputmode="numeric" value="860"><span>km</span></div>
+      </label>
+      <label>연료탱크 용량
+        <div class="unit"><input type="number" id="tank" step="1" min="1" inputmode="numeric" value="72"><span>L</span></div>
+      </label>
+    </div>
+    <p class="note">이 기준으로 1L당 약 <span class="num" id="effTxt">11.9</span>km를 가는 셈입니다.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="amtT">
+    <h2 id="amtT">만땅 말고 금액만 넣을 때</h2>
+    <label>주유 금액
+      <div class="unit"><input type="number" id="amount" step="1000" min="0" inputmode="numeric" value="50000"><span>원</span></div>
+    </label>
+    <div class="quick">
+      <button type="button" data-v="30000">3만</button><button type="button" data-v="50000">5만</button>
+      <button type="button" data-v="70000">7만</button><button type="button" data-v="100000">10만</button>
+    </div>
+    <dl class="out">
+      <div><dt>주유량</dt><dd id="amtL">-</dd></div>
+      <div><dt>늘어나는 거리</dt><dd id="amtKm">-</dd></div>
+      <div><dt>주유 후 계기판</dt><dd id="amtAfter">-</dd></div>
+    </dl>
+    <p class="note" id="amtNote"></p>
+  </section>
+
+  <footer>
+    계산 방법: 넣을 양 = 탱크 용량 × (만땅 거리 − 지금 거리) ÷ 만땅 거리. 계기판 주행가능거리는 최근 운전 연비로 계산한 추정치라 실제 들어가는 양과 몇 리터 차이 날 수 있습니다.
+    대부분의 셀프주유소는 가득 차서 자동으로 멈추면 실제로 넣은 만큼만 결제됩니다. 입력한 값은 이 브라우저에만 저장됩니다.
+  </footer>
+</div>
+
+<script>
+(function(){
+  const KEY = 'ka4-fill-v2';
+  const $ = id => document.getElementById(id);
+  const n = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+  const f = (v,d=1) => v.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const ids = ['cur','price','full','tank','amount'];
+
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s) ids.forEach(k => { if (s[k] != null) $(k).value = s[k]; });
+  } catch(e){}
+  const save = () => { try { const o={}; ids.forEach(k=>o[k]=$(k).value); localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){} };
+
+  function calc(src){
+    const full = n($('full').value) || 860, tank = n($('tank').value) || 72, price = n($('price').value);
+    if (src === 'curRange') $('cur').value = $('curRange').value;
+    $('curRange').max = full;
+    let cur = n($('cur').value);
+    const warn = $('warn');
+    if (cur > full) { warn.className='note bad'; warn.textContent = '지금 거리가 만땅 거리(' + full + 'km)보다 커서 이미 가득 찬 것으로 계산했습니다. 최근 연비가 좋아졌다면 만땅 거리를 늘려 주세요.'; cur = full; }
+    else warn.textContent = '';
+    if (src !== 'curRange') $('curRange').value = cur;
+
+    const eff = full / tank;
+    const ratio = cur / full;
+    const left = tank * ratio;
+    const needL = tank - left;
+    const cost = needL * price;
+
+    $('leftL').textContent = f(left);
+    $('pct').textContent = Math.round(ratio*100);
+    $('needle').style.transform = 'rotate(' + (-90 + ratio*180) + 'deg)';
+    $('arcFill').setAttribute('stroke-dasharray', (ratio*100) + ' 100');
+    $('arcFill').setAttribute('stroke', ratio <= 0.15 ? 'var(--warn)' : 'var(--accent)');
+
+    $('cost').textContent = Math.round(cost).toLocaleString('ko-KR');
+    $('needL').textContent = f(needL);
+    $('needKm').textContent = Math.round(full - cur).toLocaleString('ko-KR');
+    $('pumpWon').textContent = (Math.ceil(cost/1000)*1000).toLocaleString('ko-KR') + '원';
+    $('effTxt').textContent = f(eff);
+
+    const amt = n($('amount').value), aL = price ? amt/price : 0;
+    const fits = Math.min(aL, needL);
+    $('amtL').innerHTML = f(fits) + '<small>L</small>';
+    $('amtKm').innerHTML = Math.round(fits*eff).toLocaleString('ko-KR') + '<small>km</small>';
+    $('amtAfter').innerHTML = Math.round(cur + fits*eff).toLocaleString('ko-KR') + '<small>km</small>';
+    const an = $('amtNote');
+    if (aL > needL + 0.05) { an.className='note bad'; an.textContent = '이 금액은 다 들어가지 않습니다. 만땅은 ' + Math.round(cost).toLocaleString('ko-KR') + '원이면 됩니다.'; }
+    else an.textContent = '';
+    save();
+  }
+
+  ids.concat('curRange').forEach(id => $(id).addEventListener('input', () => calc(id)));
+  document.querySelectorAll('.quick button').forEach(b => b.addEventListener('click', () => { $('amount').value = b.dataset.v; calc(); }));
+  calc();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>
